@@ -1,22 +1,13 @@
 import mlflow.spark
-from spark_pipeline import create_spark_session, load_data
-import config
+from pyspark.sql import SparkSession
 
 
-def main():
+def load_model():
 
-    spark = create_spark_session()
-
-    df = load_data(spark, config.DATA_PATH)
+    spark = SparkSession.builder.getOrCreate()
 
     model = mlflow.spark.load_model(
-        f"models:/{config.MODEL_NAME}/latest"
+        "artifacts/rf_model"
     )
 
-    predictions = model.transform(df)
-
-    predictions.show(10)
-
-
-if __name__ == "__main__":
-    main()
+    return model, spark

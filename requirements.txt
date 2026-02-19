@@ -1,5 +1,5 @@
-pyspark==3.5.1
-mlflow==2.12.1
+pyspark==3.5.0
+mlflow==2.9.2
 pandas
 numpy
 scikit-learn

@@ -1,41 +1,25 @@
-from pyspark.sql import SparkSession
+from pyspark.sql.functions import col
 from pyspark.ml.feature import VectorAssembler
 
 
-def create_spark_session():
-    spark = (
-        SparkSession.builder
-        .appName("UNSW-MLflow")
-        .master("local[*]")   # uses all CPU cores
-        .config("spark.driver.memory", "6g")
-        .config("spark.executor.memory", "6g")
-        .config("spark.driver.maxResultSize", "2g")
-        .config("spark.sql.shuffle.partitions", "200")
-        .getOrCreate()
-    )
-    return spark
-
-
 def load_data(spark, path):
+
+    print("Loading data...")
+
     df = spark.read.parquet(path)
+
     return df
 
 
 def preprocess_data(df):
 
-    target_col = "binary_label"
+    print("Preprocessing...")
 
-    # columns to exclude from features
-    exclude_cols = {
-        "binary_label",
-        "attack_label"
-    }
+    label_col = "label"
 
-    # select only numeric feature columns
     feature_cols = [
-        f.name for f in df.schema.fields
-        if f.name not in exclude_cols
-        and f.dataType.simpleString() in ("int", "double", "float", "long")
+        c for c in df.columns
+        if c != label_col
     ]
 
     assembler = VectorAssembler(
@@ -45,9 +29,4 @@ def preprocess_data(df):
 
     df = assembler.transform(df)
 
-    # rename target to "label" for Spark convention
-    df = df.withColumnRenamed(target_col, "label")
-
-    df = df.select("features", "label")
-
-    return df, feature_cols
+    return df.select("features", "label"), feature_cols
