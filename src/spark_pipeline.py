@@ -1,7 +1,7 @@
 # src/spark_pipeline.py
 
 from pyspark.sql import SparkSession
-from pyspark.ml.feature import StringIndexer, OneHotEncoder, VectorAssembler
+from pyspark.ml.feature import StringIndexer, OneHotEncoder, VectorAssembler, Imputer
 from pyspark.ml import Pipeline
 
 
@@ -25,13 +25,21 @@ def preprocess_data(df):
 
     categorical_cols = ["protocol", "state", "service"]
 
+    label_col = "attack_label"
+
+    # Numeric columns (exclude label columns)
     numeric_cols = [
         c for c, t in df.dtypes
         if t in ("int", "bigint", "double", "float")
-        and c != "label"
+        and c not in ("label", "binary_label")   # important fix
     ]
 
-    label_col = "attack_label"
+    # Fill null numeric values
+    imputer = Imputer(
+        inputCols=numeric_cols,
+        outputCols=numeric_cols,
+        strategy="median"
+    )
 
     # Label indexer
     label_indexer = StringIndexer(
@@ -62,12 +70,17 @@ def preprocess_data(df):
     # Assemble features
     assembler = VectorAssembler(
         inputCols=numeric_cols + [f"{c}_vec" for c in categorical_cols],
-        outputCol="features"
+        outputCol="features",
+        handleInvalid="keep"   # important safety fix
     )
 
     # Full pipeline
     pipeline = Pipeline(
-        stages=[label_indexer] + indexers + encoders + [assembler]
+        stages=[label_indexer]
+        + indexers
+        + encoders
+        + [imputer]
+        + [assembler]
     )
 
     model = pipeline.fit(df)
