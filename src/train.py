@@ -5,7 +5,7 @@ import mlflow.spark
 
 from pyspark.sql import SparkSession
 from pyspark.ml.classification import RandomForestClassifier
-from pyspark.ml.evaluation import BinaryClassificationEvaluator
+from pyspark.ml.evaluation import MulticlassClassificationEvaluator
 
 from src.spark_pipeline import load_data, preprocess_data
 from src.config import DATA_PATH, MODEL_PATH, MLFLOW_EXPERIMENT
@@ -41,7 +41,7 @@ def main():
         rf = RandomForestClassifier(
             labelCol="label",
             featuresCol="features",
-            numTrees=100,
+            numTrees=50,
             maxDepth=10,
             seed=42
         )
@@ -54,15 +54,20 @@ def main():
 
         predictions = model.transform(train_df)
 
-        evaluator = BinaryClassificationEvaluator()
+        evaluator = MulticlassClassificationEvaluator(
+            labelCol="label",
+            predictionCol="prediction",
+            metricName="f1"
+        )
 
-        auc = evaluator.evaluate(predictions)
+        f1 = evaluator.evaluate(predictions)
 
-        print(f"AUC = {auc}")
+        print(f"F1 = {f1}")
+
+        mlflow.log_metric("f1", f1)
 
         mlflow.log_param("numTrees", 100)
         mlflow.log_param("maxDepth", 10)
-        mlflow.log_metric("auc", auc)
 
         print("Saving model...")
 
