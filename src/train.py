@@ -1,58 +1,120 @@
+# src/train.py
+
 import mlflow
 import mlflow.spark
 
 from pyspark.ml.classification import RandomForestClassifier
 from pyspark.ml.evaluation import BinaryClassificationEvaluator
 
-from spark_pipeline import create_spark_session, load_data, preprocess_data
-import config
+from src.spark_pipeline import (
+    create_spark_session,
+    load_data,
+    preprocess_data
+)
+
+DATA_PATH = "data/raw/UNSW_Flow.parquet"
+MODEL_PATH = "artifacts/rf_model"
 
 
 def main():
 
+    # --------------------------------
+    # Create Spark session
+    # --------------------------------
+
     spark = create_spark_session()
 
-    df = load_data(spark, config.DATA_PATH)
+    # --------------------------------
+    # MLflow setup
+    # --------------------------------
 
-    df, features = preprocess_data(df)
-
-    train_df, test_df = df.randomSplit(
-        [config.TRAIN_SPLIT, 1 - config.TRAIN_SPLIT],
-        seed=config.RANDOM_SEED
-    )
-
-    rf = RandomForestClassifier(
-        numTrees=50,
-        maxDepth=10,
-        labelCol="label",
-        featuresCol="features"
-    )
-
-    mlflow.set_experiment(config.EXPERIMENT_NAME)
+    mlflow.set_experiment("UNSW Intrusion Detection")
 
     with mlflow.start_run():
 
+        # --------------------------------
+        # Load data
+        # --------------------------------
+
+        df = load_data(spark, DATA_PATH)
+
+        # --------------------------------
+        # Preprocess
+        # --------------------------------
+
+        train_df, feature_cols = preprocess_data(df)
+
+        # --------------------------------
+        # Model definition
+        # --------------------------------
+
+        num_trees = 100
+        max_depth = 10
+
+        rf = RandomForestClassifier(
+            labelCol="label",
+            featuresCol="features",
+            numTrees=num_trees,
+            maxDepth=max_depth,
+            seed=42
+        )
+
+        # --------------------------------
+        # Train model
+        # --------------------------------
+
         model = rf.fit(train_df)
 
-        predictions = model.transform(test_df)
+        # --------------------------------
+        # Evaluate model
+        # --------------------------------
+
+        predictions = model.transform(train_df)
 
         evaluator = BinaryClassificationEvaluator(
-            labelCol="label"
+            labelCol="label",
+            rawPredictionCol="rawPrediction",
+            metricName="areaUnderROC"
         )
 
         auc = evaluator.evaluate(predictions)
 
-        mlflow.log_metric("AUC", auc)
-        mlflow.log_param("numTrees", 50)
-        mlflow.log_param("maxDepth", 10)
+        print(f"AUC = {auc:.4f}")
+
+        # --------------------------------
+        # Log parameters to MLflow
+        # --------------------------------
+
+        mlflow.log_param("num_trees", num_trees)
+        mlflow.log_param("max_depth", max_depth)
+        mlflow.log_param("num_features", len(feature_cols))
+
+        # --------------------------------
+        # Log metrics to MLflow
+        # --------------------------------
+
+        mlflow.log_metric("auc", auc)
+
+        # --------------------------------
+        # Save model locally
+        # --------------------------------
+
+        model.write().overwrite().save(MODEL_PATH)
+
+        print(f"Model saved to: {MODEL_PATH}")
+
+        # --------------------------------
+        # Log model to MLflow
+        # --------------------------------
 
         mlflow.spark.log_model(
-            model,
-            artifact_path="model",
-            registered_model_name=config.MODEL_NAME
+            spark_model=model,
+            artifact_path="model"
         )
 
-        print("AUC:", auc)
+        print("Model logged to MLflow")
+
+    spark.stop()
 
 
 if __name__ == "__main__":
