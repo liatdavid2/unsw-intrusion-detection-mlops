@@ -138,15 +138,6 @@ def main():
 
         mlflow.log_metric("auc", auc)
 
-        # --------------------------------
-        # Save model locally using MLflow (Windows-safe)
-        # --------------------------------      
-        mlflow.spark.save_model(
-            spark_model=model,
-            path=MODEL_PATH
-        )
-
-        print(f"Model saved to: {MODEL_PATH}")
 
         # --------------------------------
         # Log model to MLflow
