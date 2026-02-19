@@ -1,32 +1,79 @@
-from pyspark.sql.functions import col
-from pyspark.ml.feature import VectorAssembler
+# src/spark_pipeline.py
+
+from pyspark.sql import SparkSession
+from pyspark.ml.feature import StringIndexer, OneHotEncoder, VectorAssembler
+from pyspark.ml import Pipeline
 
 
-def load_data(spark, path):
-
-    print("Loading data...")
+# --------------------------------
+# Load data
+# --------------------------------
+def load_data(spark: SparkSession, path: str):
 
     df = spark.read.parquet(path)
 
     return df
 
 
+# --------------------------------
+# Preprocess data
+# --------------------------------
 def preprocess_data(df):
 
-    print("Preprocessing...")
+    # Drop unsupported columns
+    df = df.drop("source_ip", "destination_ip")
 
-    label_col = "label"
+    categorical_cols = ["protocol", "state", "service"]
 
-    feature_cols = [
-        c for c in df.columns
-        if c != label_col
+    numeric_cols = [
+        c for c, t in df.dtypes
+        if t in ("int", "bigint", "double", "float")
+        and c != "label"
     ]
 
+    label_col = "attack_label"
+
+    # Label indexer
+    label_indexer = StringIndexer(
+        inputCol=label_col,
+        outputCol="label",
+        handleInvalid="keep"
+    )
+
+    # Categorical indexers
+    indexers = [
+        StringIndexer(
+            inputCol=c,
+            outputCol=f"{c}_idx",
+            handleInvalid="keep"
+        )
+        for c in categorical_cols
+    ]
+
+    # OneHotEncoder
+    encoders = [
+        OneHotEncoder(
+            inputCol=f"{c}_idx",
+            outputCol=f"{c}_vec"
+        )
+        for c in categorical_cols
+    ]
+
+    # Assemble features
     assembler = VectorAssembler(
-        inputCols=feature_cols,
+        inputCols=numeric_cols + [f"{c}_vec" for c in categorical_cols],
         outputCol="features"
     )
 
-    df = assembler.transform(df)
+    # Full pipeline
+    pipeline = Pipeline(
+        stages=[label_indexer] + indexers + encoders + [assembler]
+    )
 
-    return df.select("features", "label"), feature_cols
+    model = pipeline.fit(df)
+
+    df = model.transform(df)
+
+    feature_cols = numeric_cols + categorical_cols
+
+    return df, feature_cols
